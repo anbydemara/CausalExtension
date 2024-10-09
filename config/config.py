@@ -16,7 +16,7 @@ def get_args(parser=argparse.ArgumentParser(description='YoungNet parser')):
     parser.add_argument('--target_domain', type=str, default='PaviaC', help='the name of target domain and data file')
 
     # 存储路径参数
-    parser.add_argument('--data_path', type=str, default='Pavia', help='the folder name of datasets')
+    parser.add_argument('--data_path', type=str, default='Pavia/', help='the folder name of datasets')
     parser.add_argument('--save_path', type=str, default='./run', help='the path of results')
 
     # 训练参数

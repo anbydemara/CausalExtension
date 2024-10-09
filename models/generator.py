@@ -10,7 +10,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from morph_layer import *
+
+from models.morph_layer import *
 
 
 class SpaRandomization(nn.Module):

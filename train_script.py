@@ -177,9 +177,9 @@ if __name__ == '__main__':
 
     # 数据加载
     img_src, gt_src, LABEL_VALUES_src, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.source_name,
-                                                                                        args.data_path)
+                                                                                        os.path.join(DATA_ROOT, args.data_path))
     img_tar, gt_tar, LABEL_VALUES_tar, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.target_name,
-                                                                                        args.data_path)
+                                                                                        os.path.join(DATA_ROOT, args.data_path))
 
     sample_num_src = len(np.nonzero(gt_src)[0])
     sample_num_tar = len(np.nonzero(gt_tar)[0])
