@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
+/data/Pavia/
+
 # Distribution / packaging
 .Python
 build/
