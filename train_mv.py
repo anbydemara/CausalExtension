@@ -18,6 +18,7 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 
 from config.config import get_args
 from data.datasets import get_dataset, HyperX
@@ -45,10 +46,11 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def train():
+def train(epoch):
     D_net.train()
     loss_list = []
-    for i, (x, y) in enumerate(train_loader):
+    loop = tqdm(train_loader, desc='Epoch [{}/{}]'.format(epoch + 1, args.epoch))
+    for i, (x, y) in enumerate(loop):
         x, y = x.to(args.gpu), y.to(args.gpu)
         y = y - 1
         # 生成扩展域和中间域 no_grad
@@ -132,7 +134,8 @@ def validation(best_acc):
     D_net.eval()
     ps = []
     ys = []
-    for i, (x1, y1) in enumerate(val_loader):
+    loop = tqdm(test_loader, desc='Testing')
+    for i, (x1, y1) in enumerate(loop):
         y1 = y1 - 1
         with torch.no_grad():
             x1 = x1.to(args.gpu)
@@ -144,8 +147,8 @@ def validation(best_acc):
     ys = np.concatenate(ys)
     acc = np.mean(ys == ps) * 100
     results = metrics(ps, ys, n_classes=ys.max() + 1)
-    print('TPR:', np.round(results['TPR'] * 100, 2), '\n', 'OA:', results['Accuracy'])
-    print('TPR: {} | current OA: {} | best OA: {}'.format(np.round(results['TPR'] * 100, 2), results['Accuracy'], best_acc))
+    # print('TPR:', np.round(results['TPR'] * 100, 2), '\n', 'OA:', results['Accuracy'])
+    print('TPR: {} | current OA: {.4f} | best OA: {.4f}'.format(np.round(results['TPR'] * 100, 2), results['Accuracy'], best_acc))
     return acc
 
 # def evaluate(net, val_loader, gpu, tgt=False):
@@ -266,7 +269,7 @@ if __name__ == '__main__':
     for epoch in range(1, args.epoch + 1):
         print('-' * 45 + 'Training' + '-' * 45)
         start = time.time()
-        train()
+        train(epoch)
         end = time.time()
         print('epoch time:', end - start)
         print('-' * 44 + 'Validating' + '-' * 44)
