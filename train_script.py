@@ -78,7 +78,6 @@ def train(best_acc):
 
         D_opt.zero_grad()
         loss.backward(retain_graph=True)
-        D_opt.step()
 
         num_adv = y.unique().size()
         # zsrc_con = torch.cat([z_tgt.unsqueeze(1), z_ED.unsqueeze(1), z_ID.unsqueeze(1)], dim=1)
@@ -101,6 +100,7 @@ def train(best_acc):
         loss = tgt_cls_loss + args.lambda_2 * con_loss_adv
         G_opt.zero_grad()
         loss.backward()
+        D_opt.step()
         G_opt.step()
         # if args.lr_scheduler in ['cosine']:
         #     scheduler.step()

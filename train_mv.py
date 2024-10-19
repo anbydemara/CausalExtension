@@ -45,7 +45,7 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def train(best_acc):
+def train():
     D_net.train()
     loss_list = []
     for i, (x, y) in enumerate(train_loader):
@@ -78,7 +78,6 @@ def train(best_acc):
 
         D_opt.zero_grad()
         loss.backward(retain_graph=True)
-        D_opt.step()
 
         num_adv = y.unique().size()
         # zsrc_con = torch.cat([z_tgt.unsqueeze(1), z_ED.unsqueeze(1), z_ID.unsqueeze(1)], dim=1)
@@ -101,66 +100,87 @@ def train(best_acc):
         loss = tgt_cls_loss + args.lambda_2 * con_loss_adv
         G_opt.zero_grad()
         loss.backward()
+        D_opt.step()
         G_opt.step()
         # if args.lr_scheduler in ['cosine']:
         #     scheduler.step()
         loss_list.append([src_cls_loss.item(), tgt_cls_loss.item(), con_loss.item(), con_loss_adv.item()])
 
     src_cls_loss, tgt_cls_loss, con_loss, con_loss_adv = np.mean(loss_list, 0)
-    D_net.eval()
-    teacc = evaluate(D_net, val_loader, args.gpu)
-    if best_acc < teacc:
-        best_acc = teacc
-        torch.save({'Discriminator': D_net.state_dict()}, os.path.join(log_dir, f'best.pkl'))
+    # D_net.eval()
+    # teacc = evaluate(D_net, val_loader, args.gpu)
+    # if best_acc < teacc:
+    #     best_acc = teacc
+    #     torch.save({'Discriminator': D_net.state_dict()}, os.path.join(log_dir, f'best.pkl'))
 
     print(
-        f'epoch {epoch}, train {len(train_loader.dataset)}, src_cls {src_cls_loss:.4f} tgt_cls {tgt_cls_loss:.4f} con {con_loss:.4f} con_adv {con_loss_adv:.4f} /// val {len(val_loader.dataset)}, teacc {teacc:2.2f}')
+        f'epoch {epoch}, train {len(train_loader.dataset)}, src_cls {src_cls_loss:.4f} tgt_cls {tgt_cls_loss:.4f} con {con_loss:.4f} con_adv {con_loss_adv:.4f}')
     writer.add_scalar('src_cls_loss', src_cls_loss, epoch)
     writer.add_scalar('tgt_cls_loss', tgt_cls_loss, epoch)
     writer.add_scalar('con_loss', con_loss, epoch)
     writer.add_scalar('con_loss_adv', con_loss_adv, epoch)
-    writer.add_scalar('teacc', teacc, epoch)
+    # writer.add_scalar('teacc', teacc, epoch)
 
-    if epoch % args.log_interval == 0:
-        pklpath = f'{log_dir}/best.pkl'
-        taracc = evaluate_tgt(D_net, args.gpu, test_loader, pklpath)
-        taracc_list.append(round(taracc, 2))
-        print(f'load pth, target sample number {len(test_loader.dataset)}, max taracc {max(taracc_list):2.2f}')
+    # if epoch % args.log_interval == 0:
+    #     pklpath = f'{log_dir}/best.pkl'
+    #     taracc = evaluate_tgt(D_net, args.gpu, test_loader, pklpath)
+    #     taracc_list.append(round(taracc, 2))
+    #     print(f'load pth, target sample number {len(test_loader.dataset)}, max taracc {max(taracc_list):2.2f}')
 
 
-def evaluate(net, val_loader, gpu, tgt=False):
+def validation(best_acc):
+    D_net.eval()
     ps = []
     ys = []
-    for i,(x1, y1) in enumerate(val_loader):
+    for i, (x1, y1) in enumerate(val_loader):
         y1 = y1 - 1
         with torch.no_grad():
-            x1 = x1.to(gpu)
-            p1 = net(x1)
+            x1 = x1.to(args.gpu)
+            p1 = D_net(x1)
             p1 = p1.argmax(dim=1)
             ps.append(p1.detach().cpu().numpy())
             ys.append(y1.numpy())
     ps = np.concatenate(ps)
     ys = np.concatenate(ys)
-    acc = np.mean(ys==ps)*100
-    if tgt:
-        results = metrics(ps, ys, n_classes=ys.max()+1)
-        print(results['Confusion_matrix'],'\n','TPR:', np.round(results['TPR']*100,2),'\n', 'OA:', results['Accuracy'])
+    acc = np.mean(ys == ps) * 100
+    results = metrics(ps, ys, n_classes=ys.max() + 1)
+    print('TPR:', np.round(results['TPR'] * 100, 2), '\n', 'OA:', results['Accuracy'])
+    print('TPR: {} | current OA: {} | best OA: {}'.format(np.round(results['TPR'] * 100, 2), results['Accuracy'], best_acc))
     return acc
 
+# def evaluate(net, val_loader, gpu, tgt=False):
+#     ps = []
+#     ys = []
+#     for i,(x1, y1) in enumerate(val_loader):
+#         y1 = y1 - 1
+#         with torch.no_grad():
+#             x1 = x1.to(gpu)
+#             p1 = net(x1)
+#             p1 = p1.argmax(dim=1)
+#             ps.append(p1.detach().cpu().numpy())
+#             ys.append(y1.numpy())
+#     ps = np.concatenate(ps)
+#     ys = np.concatenate(ys)
+#     acc = np.mean(ys==ps)*100
+#     if tgt:
+#         results = metrics(ps, ys, n_classes=ys.max()+1)
+#         print(results['Confusion_matrix'],'\n','TPR:', np.round(results['TPR']*100,2),'\n', 'OA:', results['Accuracy'])
+#     return acc
 
-def evaluate_tgt(cls_net, gpu, loader, modelpath):
-    saved_weight = torch.load(modelpath)
-    cls_net.load_state_dict(saved_weight['Discriminator'])
-    cls_net.eval()
-    teacc = evaluate(cls_net, loader, gpu, tgt=True)
-    return teacc
+
+# def evaluate_tgt(cls_net, gpu, loader, modelpath):
+#     saved_weight = torch.load(modelpath)
+#     cls_net.load_state_dict(saved_weight['Discriminator'])
+#     cls_net.eval()
+#     teacc = evaluate(cls_net, loader, gpu, tgt=True)
+#     return teacc
 
 if __name__ == '__main__':
     # 全局参数 & 设置
     DATA_ROOT = './data/datasets/'
     args = get_args()
     hyperparams = vars(args)
-    set_seed(args.seed)
+    # set_seed(args.seed)
 
     ## log
     root = os.path.join(args.save_path, args.source_domain)
@@ -176,9 +196,9 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir)
 
     # 数据加载
-    img_src, gt_src, LABEL_VALUES_src, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.source_name,
+    img_src, gt_src, LABEL_VALUES_src, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.source_domain,
                                                                                         os.path.join(DATA_ROOT, args.data_path))
-    img_tar, gt_tar, LABEL_VALUES_tar, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.target_name,
+    img_tar, gt_tar, LABEL_VALUES_tar, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.target_domain,
                                                                                         os.path.join(DATA_ROOT, args.data_path))
 
     sample_num_src = len(np.nonzero(gt_src)[0])
@@ -228,6 +248,7 @@ if __name__ == '__main__':
                              batch_size=hyperparams['batch_size'])
     imsize = [hyperparams['patch_size'], hyperparams['patch_size']]
 
+    # 创建模型和优化器
     # 判别器&优化器
     D_net = Discriminator(inchannel=N_BANDS, outchannel=args.pro_dim, num_classes=num_classes,
                           patch_size=hyperparams['patch_size']).to(args.gpu)
@@ -242,9 +263,15 @@ if __name__ == '__main__':
     con_criterion = SupConLoss(device=args.gpu)
 
     best_acc = 0
-    taracc, taracc_list = 0, []
     for epoch in range(1, args.epoch + 1):
+        print('-' * 45 + 'Training' + '-' * 45)
         start = time.time()
-        train(best_acc=best_acc)
+        train()
         end = time.time()
+        print('epoch time:', end - start)
+        print('-' * 44 + 'Validating' + '-' * 44)
+        taracc = validation(best_acc=best_acc)
+        if best_acc < taracc:
+            best_acc = taracc
+            torch.save({'Discriminator': D_net.state_dict()}, os.path.join(log_dir, f'best.pkl'))
     writer.close()
