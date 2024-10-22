@@ -28,8 +28,8 @@ def FreCom_hyper(img):
     return img_dct
 
 
-def Matching_hyper(img, reference, alpha=0.2, beta=1):
-    theta = np.random.uniform(alpha, beta)
+def Matching_hyper(img):
+    # theta = np.random.uniform(alpha, beta)
     h, w, c = img.shape
     img_dct = FreCom_hyper(img)
 
@@ -72,17 +72,20 @@ if __name__ == '__main__':
     mat_path = './data/Pavia/PaviaU.mat'
     mat = sio.loadmat(mat_path)
     img = mat['ori_data']
+    print(img.shape)
+    exit(0)
     min_val = np.min(img)  # 高光谱图像的最小值
     max_val = np.max(img)  # 高光谱图像的最大值
-    # 生成一个随机参考图像（同样尺寸和波段）
-    h, w, c = img.shape
-    reference = np.ones_like(img)
-    for i in range(c):
-        # reference[:, :, i] = reference[:, :, i] * np.random.randint(0, 255)
-        reference[:, :, i] = reference[:, :, i] * np.random.randint(min_val, max_val)
+    # # 生成一个随机参考图像（同样尺寸和波段）
+    # h, w, c = img.shape
+    # reference = np.ones_like(img)
+    # for i in range(c):
+    #     # reference[:, :, i] = reference[:, :, i] * np.random.randint(0, 255)
+    #     reference[:, :, i] = reference[:, :, i] * np.random.randint(min_val, max_val)
 
     # 对高光谱图像进行频域匹配处理
-    img_matched = Matching_hyper(img, reference)
+    img_matched = Matching_hyper(img)
+
     img_matched = np.int16(img_matched)
     mat['ori_data'] = img_matched
     sio.savemat('./data/Pavia/PaviaU_A.mat', mat)

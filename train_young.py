@@ -5,7 +5,7 @@
 @File    ：train_young.py
 @IDE     ：PyCharm 
 @Author  ：一只快乐鸭
-@Date    ：2024/10/13 10:47 
+@Date    ：2024/10/22 15:26 
 """
 import os
 import random
@@ -22,8 +22,6 @@ from tqdm import tqdm
 
 from config.config import get_args
 from data.datasets import get_dataset, HyperX
-from models.con_loss import SupConLoss
-from models.discriminator import Discriminator
 from models.extractor import CausalNet, CategoryConsistencyLoss
 from models.generator import Generator
 from utils.data_util import sample_gt, seed_worker, metrics
@@ -48,13 +46,13 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def train(best_acc):
+def train(epoch):
     model.train()
     loss_list = []
     train_loss = 0  # loss
-    loop = tqdm(train_loader, desc='Epoch [{}/{}]'.format(epoch + 1, args.epoch))
+    loop = tqdm(train_loader, desc='Epoch [{}/{}]'.format(epoch, args.epoch))
     for i, (data, label) in enumerate(loop):
-        data, label = data.cuda(), label.cuda()
+        data, label = data.to(args.gpu), label.to(args.gpu)
         label -= 1
         # 生成扩展域和中间域 no_grad
         with torch.no_grad():
@@ -62,38 +60,33 @@ def train(best_acc):
         rand = torch.nn.init.uniform_(torch.empty(len(data), 1, 1, 1)).to(args.gpu)
         x_ID = rand * data + (1 - rand) * x_ED
 
-        x_tgt = generator(data)#.detach()
-        ed_label = label
+        x_TD = generator(data)  # .detach()
+        label_TD = label
 
-        data = torch.cat((data, x_ED), dim=0)
-        label = label.repeat(2)
-        out, band_weights, features = model(data)
-        split_idx = int(data.size(0) / 2)
-        features_ori, features_ed = torch.split(features, split_idx)
-        assert features_ori.size(0) == features_ed.size(0)
+        #         data = torch.cat((data, x_ED), dim=0)
+        #         label = label.repeat(2)
+        out_SD, band_SD, feat_SD = model(data, mode='train')
+        out_ED, band_ED, feat_ED = model(x_ED, mode='train')
 
-        ed_out, _, _ = model(x_tgt)
+        assert feat_SD.size(0) == feat_ED.size(0)
+        out_TD = model(x_TD)
 
-        ed_cls_loss = cls_criterion(ed_out, ed_label)  # ed分类损失
-        cls_loss = cls_criterion(out, label)  # 分类损失
-        loss_cc = cc_criterion(band_weights, label)
-        loss_fac = factorization_loss(features_ori, features_ed)
-        # loss = 0.8 * cls_loss + 0.2 * ed_cls_loss + 0.01 * loss_cc
-        loss = 0.8 * cls_loss + 0.2 * ed_cls_loss + 0.01 * loss_cc + 0.5 * loss_fac
-        # optimizers['extractor'].zero_grad()
-        # optimizers['classifier'].zero_grad()
+        cls_loss_TD = cls_criterion(out_TD, label_TD)  # TD分类损失
+
+        cls_loss = cls_criterion(out_SD, label) + cls_criterion(out_ED, label)  # 分类损失
+
+        loss_fac = factorization_loss(feat_SD, feat_ED)
+        loss_cc = cc_criterion(band_SD, label) + cc_criterion(band_ED, label)
+        loss = 0.8 * cls_loss + 0.2 * cls_loss_TD + loss_cc + loss_fac
         M_opt.zero_grad()
-
-        # 反向传播
+        C_opt.zero_grad()
         loss.backward(retain_graph=True)
 
         G_opt.zero_grad()
-
-        # loss = 0.8 * cls_loss + 0.2 * ed_cls_loss + 0.5 * loss_fac
-        loss = 0.2 * cls_loss + 0.8 * ed_cls_loss
-
+        loss = 0.2 * cls_loss + 0.8 * cls_loss_TD
         loss.backward()
         M_opt.step()
+        C_opt.step()
         G_opt.step()
 
         # 打印统计信息
@@ -108,52 +101,27 @@ def train(best_acc):
             train_loss = 0.0
 
 
-def evaluate(best_acc):
-
-    # extractor = Extractor(102, 256)
-    # classifier = Classifier(input_size=256, num_classes=7)
-    # model = CausalNet(in_channels=102, num_classes=7)
-    #
-    # if torch.cuda.is_available():
-    #     state_dict = torch.load("./run/Pavia/ckpt/best.pth.tar")
-    #     # extractor.cuda(), classifier.cuda()
-    #     model.cuda()
-    # else:
-    #     state_dict = torch.load("./run/Pavia/ckpt/best.pth.tar", map_location=torch.device('cpu'))
-
-    # extractor.load_state_dict(state_dict['extractor_state_dict'])
-    # classifier.load_state_dict(state_dict['classifier_state_dict'])
-    # model.load_state_dict(state_dict['model_state_dict'])
+def validation(best_acc):
     model.eval()
+    ps = []
+    ys = []
     loop = tqdm(test_loader, desc='Testing')
-    with torch.no_grad():
-        outs = []
-        labels = []
-        for i, (data, label) in enumerate(loop):
-            label = label - 1
-            # GPU processing
-            data = data.cuda()
-            # features = extractor(data)
-            # out = classifier(features)
-            out, _, features = model(data)
-            out = out.argmax(dim=1)
-            outs.append(out.detach().cpu().numpy())
-            labels.append(label.numpy())
+    for i, (x1, y1) in enumerate(loop):
+        y1 = y1 - 1
+        with torch.no_grad():
+            x1 = x1.to(args.gpu)
+            p1 = model(x1)
+            p1 = p1.argmax(dim=1)
+            ps.append(p1.detach().cpu().numpy())
+            ys.append(y1.numpy())
+    ps = np.concatenate(ps)
+    ys = np.concatenate(ys)
+    acc = np.mean(ys == ps) * 100
+    results = metrics(ps, ys, n_classes=ys.max() + 1)
+    print('TPR: {} | current OA: {:2.2f} | best OA: {:2.2f}'.format(np.round(results['TPR'] * 100, 2),
+                                                                    results['Accuracy'], best_acc))
+    return acc
 
-        outs = np.concatenate(outs)
-        labels = np.concatenate(labels)
-        acc = np.mean(outs == labels) * 100
-
-        metrics = get_metrics(outs, labels)
-
-        print('metrics [oa: {:2.4f} | kappa: {:2.4f} | aa: {:2.4f} | test_acc: {:2.2f} | best_acc: {:2.2f}]'.format(metrics['oa'],
-                                                                                                metrics['kappa'],
-                                                                                                metrics['aa'], acc, best_acc))
-        if acc > best_acc:
-            best_acc = acc
-            save_model(model=model, best_acc=best_acc, epoch=epoch, folder=args.source_domain, best=True)
-            print('[Saving Best Snapshot:] run/{}/ckpt/best.pth.tar'.format(args.source_domain))
-        return best_acc
 
 if __name__ == '__main__':
     # 全局参数 & 设置
@@ -176,13 +144,12 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir)
 
     # 数据加载
-    img_src, gt_src, LABEL_VALUES_src, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.source_name,
-                                                                                        os.path.join(DATA_ROOT, args.data_path))
-    img_tar, gt_tar, LABEL_VALUES_tar, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.target_name,
-                                                                                        os.path.join(DATA_ROOT, args.data_path))
-
-    num_bands = img_src.shape[0]  # 通道数
-    num_classes = gt_src.max()  # 类别数
+    img_src, gt_src, LABEL_VALUES_src, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.source_domain,
+                                                                                        os.path.join(DATA_ROOT,
+                                                                                                     args.data_path))
+    img_tar, gt_tar, LABEL_VALUES_tar, IGNORED_LABELS, RGB_BANDS, palette = get_dataset(args.target_domain,
+                                                                                        os.path.join(DATA_ROOT,
+                                                                                                     args.data_path))
 
     sample_num_src = len(np.nonzero(gt_src)[0])
     sample_num_tar = len(np.nonzero(gt_tar)[0])
@@ -200,7 +167,6 @@ if __name__ == '__main__':
     gt_tar = np.pad(gt_tar, ((r, r), (r, r)), 'constant', constant_values=(0, 0))
 
     train_gt_src, val_gt_src, _, _ = sample_gt(gt_src, args.training_sample_ratio, mode='random')
-
     test_gt_tar, _, _, _ = sample_gt(gt_tar, 1, mode='random')
     img_src_con, train_gt_src_con = img_src, train_gt_src
     val_gt_src_con = val_gt_src
@@ -232,32 +198,36 @@ if __name__ == '__main__':
                              batch_size=hyperparams['batch_size'])
     imsize = [hyperparams['patch_size'], hyperparams['patch_size']]
 
-
-
-    start_epoch = 0
-    best_acc = 0.0
-    model = CausalNet(in_channels=num_bands, num_classes=num_classes)
+    # 创建模型和优化器
+    # 判别器&优化器
+    model = CausalNet(in_channels=N_BANDS, out_channels=hyperparams['pro_dim'], num_classes=num_classes)
     M_opt = torch.optim.Adam(model.parameters(), lr=args.lr)
-    cc_criterion = CategoryConsistencyLoss(num_classes=num_classes, embedding_size=num_bands)
-    C_opt = torch.optim.Adam(cc_criterion.parameters(), lr=args.lr)
+
     # 生成器&优化器
     generator = Generator(n=args.d_se, imdim=N_BANDS, imsize=imsize, zdim=10, device=args.gpu)
     G_opt = Adam(generator.parameters(), lr=args.lr)
 
     # loss
+    cc_criterion = CategoryConsistencyLoss(num_classes=num_classes, embedding_size=N_BANDS, device=args.gpu)
+    C_opt = torch.optim.Adam(cc_criterion.parameters(), lr=args.lr)
+
     cls_criterion = nn.CrossEntropyLoss()
 
     if torch.cuda.is_available():
-        model.cuda()
-        generator.cuda()
-        cc_criterion.cuda()
-    for epoch in range(start_epoch, args.epoch):
+        model.to(args.gpu)
+        generator.to(args.gpu)
+        cc_criterion.to(args.gpu)
+
+    best_acc = 0
+    for epoch in range(1, args.epoch + 1):
         print('-' * 45 + 'Training' + '-' * 45)
-        t1 = time.time()
+        start = time.time()
         train(epoch)
-        t2 = time.time()
-        print('epoch time:', t2 - t1)
+        end = time.time()
+        print('epoch time:', end - start)
         print('-' * 44 + 'Validating' + '-' * 44)
-        # best_acc = validate(epoch, models=models, val_loader=val_loader, best_acc=best_acc)
-        best_acc = evaluate(best_acc=best_acc)
+        taracc = validation(best_acc=best_acc)
+        if best_acc < taracc:
+            best_acc = taracc
+            torch.save({'Discriminator': model.state_dict()}, os.path.join(log_dir, f'best.pkl'))
     writer.close()
