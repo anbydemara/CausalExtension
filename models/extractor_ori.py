@@ -11,9 +11,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.functions import ReverseLayerF
-
-
 # from models.ResNet import get_resnet8
 # from models.Res3D import ResNet3D
 
@@ -50,12 +47,12 @@ class Extractor(nn.Module):
     """
     def __init__(self, in_channels, zdim):
         super(Extractor, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, 128, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, 128, kernel_size=3)
         self.conv2 = nn.Conv2d(128, 128, kernel_size=3)
-        self.maxpool = nn.MaxPool2d(2, 2)
+        self.maxpool = nn.MaxPool2d(3, 3)
 
-        self.fc1 = nn.Linear(in_features=512, out_features=1024)
-        self.fc2 = nn.Linear(in_features=1024, out_features=zdim)
+        self.fc1 = nn.Linear(in_features=128, out_features=512)
+        self.fc2 = nn.Linear(in_features=512, out_features=zdim)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -65,7 +62,7 @@ class Extractor(nn.Module):
         x = x.view(x.size(0), -1)   # 保留批处理维度
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        return x
+        return x    # 256
 
 class Classifier(nn.Module):
     """
@@ -88,44 +85,21 @@ class Classifier(nn.Module):
         return F.normalize(x)
 
 
-class DomainClassifier(nn.Module):
-    def __init__(self, input_size):
-        super(DomainClassifier, self).__init__()
-
-        self.d_fc1 = nn.Linear(in_features=input_size, out_features=100)
-        self.d_bn1 = nn.BatchNorm1d(100)
-        self.d_relu1 = nn.ReLU(True)
-        self.d_fc2 = nn.Linear(in_features=100, out_features=2)
-        self.d_softmax = nn.LogSoftmax(dim=1)
-
-    def forward(self, x):
-        x = self.d_bn1(self.d_fc1(x))
-
 class CausalNet(nn.Module):
-    def __init__(self, in_channels, out_channels, num_classes):
+    def __init__(self, in_channels, num_classes):
         super(CausalNet, self).__init__()
         self.swl = SWL(in_channels=in_channels)
-        self.extractor = Extractor(in_channels, out_channels)
+        self.extractor = Extractor(in_channels, 256)
         # self.extractor = get_resnet8(102)
         # self.extractor = ResNet3D(1, 8, 16, n_bands=102, patch_size=17, embed_dim=512, CLASS_NUM=num_classes)
         # self.classifier = Classifier(input_size=256, num_classes=num_classes, hidden_size=128)
-        self.classifier = Classifier(input_size=out_channels, num_classes=num_classes)
-        self.domainclassifier = nn.Sequential(
-            nn.Linear(in_features=out_channels, out_features=100),
-            nn.BatchNorm1d(100),
-            nn.Linear(in_features=100, out_features=2),
-            nn.LogSoftmax(dim=1)
-        )
+        self.classifier = Classifier(input_size=512, num_classes=num_classes, hidden_size=128)
 
-    def forward(self, x, alpha, mode='test'):
+    def forward(self, x):
         band_weights = self.swl(x)
         x = x + x * band_weights
         features = self.extractor(x)
-        if mode == 'test':
-            return self.classifier(features)
-        elif mode == 'train':
-            reverse_feature = ReverseLayerF.apply(features, alpha)
-            return self.classifier(features), self.domainclassifier(reverse_feature), band_weights.squeeze(), features
+        return self.classifier(features), band_weights.squeeze(), features
 
 
 class SWL(nn.Module):
@@ -157,7 +131,7 @@ class SWL(nn.Module):
 
 
 class CategoryConsistencyLoss(nn.Module):
-    def __init__(self, num_classes, embedding_size, device=0):
+    def __init__(self, num_classes, embedding_size):
         super(CategoryConsistencyLoss, self).__init__()
         self.num_classes = num_classes
         self.embedding_size = embedding_size
@@ -170,6 +144,7 @@ class CategoryConsistencyLoss(nn.Module):
         dist_metric = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(batch_size, self.num_classes) + \
                       torch.pow(self.weightcenters, 2).sum(dim=1, keepdim=True).expand(self.num_classes, batch_size).t()
         dist_metric.addmm_(x, self.weightcenters.t(), beta=1, alpha=-2)
-        dist = dist_metric[range(batch_size), labels.long()]
+
+        dist = dist_metric[range(batch_size), labels]
         loss = dist.clamp(1e-12, 1e+12).sum() / batch_size
         return loss
