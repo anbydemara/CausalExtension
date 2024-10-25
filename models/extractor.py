@@ -157,13 +157,10 @@ class CausalNet(nn.Module):
         # )
 
     def forward(self, x, domain_label, alpha, mode='test'):
-        #         band_weights = self.swl(x)
-        #         x = x + x * band_weights
         features = self.extractor(x)
         if mode == 'test':
             return self.classifier(features)
         elif mode == 'train':
-            # reverse_feature = ReverseLayerF.apply(features, alpha)
             # 单视角
             sigmoid_out = self.MV_domainclassifier(features, alpha)
 
@@ -219,54 +216,7 @@ class CausalNet(nn.Module):
             re_loss = re1_loss + re2_loss + re3_loss
             mv_loss = mv1_loss + mv2_loss + mv3_loss
             dif_loss = dif12_ins + dif13_ins + dif23_ins
-            return self.classifier(features), sigmoid_out, re_loss, mv_loss, dif_loss
-
-
-class SWL(nn.Module):
-    def __init__(self, in_channels=102):
-        super(SWL, self).__init__()
-        self.avgpool = nn.AdaptiveAvgPool2d(output_size=1)
-        self.maxpool = nn.AdaptiveMaxPool2d(output_size=1)
-        self.channel_attention = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=in_channels // 8, kernel_size=1, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=in_channels // 8, out_channels=in_channels, kernel_size=1, bias=False)
-        )
-        self.sigmoid = nn.Sigmoid()
-        self._init_params()
-
-    def _init_params(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-
-    def forward(self, x):
-        B, C, _, _ = x.size()
-        x_avg, x_max = self.avgpool(x), self.maxpool(x)
-        avg_weights, max_weights = self.channel_attention(x_avg), self.channel_attention(x_max)
-        band_weights = self.sigmoid(avg_weights + max_weights)
-        return band_weights
-
-
-class CategoryConsistencyLoss(nn.Module):
-    def __init__(self, num_classes, embedding_size, device=0):
-        super(CategoryConsistencyLoss, self).__init__()
-        self.num_classes = num_classes
-        self.embedding_size = embedding_size
-        self.weightcenters = nn.Parameter(torch.normal(0, 1, (num_classes, embedding_size)))
-
-    def forward(self, x, labels):
-        if len(x.size()) == 1:
-            x = x.unsqueeze(0)
-        batch_size = x.size(0)
-        dist_metric = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(batch_size, self.num_classes) + \
-                      torch.pow(self.weightcenters, 2).sum(dim=1, keepdim=True).expand(self.num_classes, batch_size).t()
-        dist_metric.addmm_(x, self.weightcenters.t(), beta=1, alpha=-2)
-        dist = dist_metric[range(batch_size), labels.long()]
-        loss = dist.clamp(1e-12, 1e+12).sum() / batch_size
-        return loss
+            return self.classifier(features), features, sigmoid_out, re_loss, mv_loss, dif_loss
 
 
 class DomainEncoder(nn.Module):
