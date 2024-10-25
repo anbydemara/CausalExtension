@@ -83,14 +83,12 @@ def train(epoch):
 
         # 单视角
         #   source 域标签
-        domain_loss_SD = loss_domain(domain_SD, domain_label_SD)
+#         domain_loss_SD = loss_domain(domain_SD, domain_label_SD)
 
         #   extend 域标签
-        domain_loss_ED = loss_domain(domain_ED, domain_label_ED)
+#         domain_loss_ED = loss_domain(domain_ED, domain_label_ED)
 
         # 多视角
-
-
 
         out_TD = model(x_TD, None, None)
 
@@ -98,16 +96,16 @@ def train(epoch):
 
         cls_loss = cls_criterion(out_SD, label) + cls_criterion(out_ED, label)  # 分类损失
 
-        domain_loss = domain_loss_SD.mean() + domain_loss_ED.mean()
-        loss = domain_loss + cls_loss + MV_loss
-
+#         domain_loss = domain_loss_SD.mean() + domain_loss_ED.mean()
+#         err = domain_loss + cls_loss + MV_loss
+        err = cls_loss + MV_loss * epoch * 0.12
         # loss_fac = factorization_loss(feat_SD, feat_ED)
         # loss_cc = cc_criterion(band_SD, label) + cc_criterion(band_ED, label)
         # loss = 0.8 * cls_loss + 0.2 * cls_loss_TD + loss_cc + loss_fac    # loss_cc刚开始会非常大
         # 指标前期不变原因未查明
 
         M_opt.zero_grad()
-        loss.backward(retain_graph=True)
+        err.backward(retain_graph=True)
 
         G_opt.zero_grad()
         loss = 0.2 * cls_loss + 0.8 * cls_loss_TD
@@ -117,7 +115,7 @@ def train(epoch):
 
         # 打印统计信息
         train_loss += loss.item()
-        writer.add_scalar('domain_loss', loss - cls_loss, epoch)
+        writer.add_scalar('MV_loss', err - cls_loss, epoch)
         writer.add_scalar('cls_loss', cls_loss, epoch)
         writer.add_scalar('td_loss', cls_loss_TD, epoch)
 

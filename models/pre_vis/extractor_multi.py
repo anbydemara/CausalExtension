@@ -3,9 +3,9 @@
 """
 @Project ：CausalExtension 
 @File    ：extractor8482.py
-@IDE     ：PyCharm 
+@IDE     ：PyCharm
 @Author  ：一只快乐鸭
-@Date    ：2024/10/13 10:49 
+@Date    ：2024/10/13 10:49
 """
 import torch
 import torch.nn as nn
@@ -142,11 +142,10 @@ class CausalNet(nn.Module):
         self.MV2_classifier = MVDC_En()
         self.MV3_classifier = MVDC_En()
 
-        self.ln_ins = nn.LayerNorm(normalized_shape = [256])
+        self.ln_ins = nn.LayerNorm(normalized_shape=[256])
 
         self.domain_loss = nn.CrossEntropyLoss()
         self.mse_loss = nn.MSELoss()
-        # self.consistency_loss = nn.MSELoss(size_average=False)
 
         # self.domainclassifier = nn.Sequential(
         #     nn.Linear(in_features=out_channels, out_features=100),
@@ -165,9 +164,10 @@ class CausalNet(nn.Module):
         elif mode == 'train':
             # reverse_feature = ReverseLayerF.apply(features, alpha)
             # 单视角
-            sigmoid_out = self.MV_domainclassifier(features, alpha)
+            domain_out = self.MV_domainclassifier(features, alpha)
 
             # 多视角
+            # ----------------------------------
             # 视角1
             MV1_feat = self.mv1_encoder(features)
             re1_feat = self.mv1_decoder(MV1_feat)
@@ -178,8 +178,10 @@ class CausalNet(nn.Module):
             MV1_feat = self.ln_ins(MV1_feat)
 
             #    域分类损失
-            mv1_sigmoid_out = self.MV1_classifier(MV1_feat, alpha)
-            mv1_loss = self.domain_loss(mv1_sigmoid_out, domain_label)
+            mv1_out = self.MV1_classifier(MV1_feat, alpha)
+            mv1_loss = self.domain_loss(mv1_out, domain_label)
+
+            # ----------------------------------
 
             # 视角2
             MV2_feat = self.mv2_encoder(features)
@@ -191,8 +193,10 @@ class CausalNet(nn.Module):
             MV2_feat = self.ln_ins(MV2_feat)
 
             #    域分类损失
-            mv2_sigmoid_out = self.MV2_classifier(MV2_feat, alpha)
-            mv2_loss = self.domain_loss(mv2_sigmoid_out, domain_label)
+            mv2_out = self.MV2_classifier(MV2_feat, alpha)
+            mv2_loss = self.domain_loss(mv2_out, domain_label)
+
+            # ----------------------------------
 
             # 视角3
             MV3_feat = self.mv3_encoder(features)
@@ -204,22 +208,20 @@ class CausalNet(nn.Module):
             MV3_feat = self.ln_ins(MV3_feat)
 
             #    域分类损失
-            mv3_sigmoid_out = self.MV3_classifier(MV3_feat, alpha)
-            mv3_loss = self.domain_loss(mv3_sigmoid_out, domain_label)
+            mv3_out = self.MV3_classifier(MV3_feat, alpha)
+            mv3_loss = self.domain_loss(mv3_out, domain_label)
+
+            # ----------------------------------
 
             # 多视角损失
-            dif12_ins = (self.mse_loss(MV1_feat, MV2_feat.detach()) + self.mse_loss(MV2_feat, MV1_feat.detach()))/2
-            dif13_ins = (self.mse_loss(MV1_feat, MV3_feat.detach()) + self.mse_loss(MV3_feat, MV1_feat.detach()))/2
-            dif23_ins = (self.mse_loss(MV2_feat, MV3_feat.detach()) + self.mse_loss(MV3_feat, MV2_feat.detach()))/2
+            dif12_ins = (self.mse_loss(MV1_feat, MV2_feat.detach()) + self.mse_loss(MV2_feat, MV1_feat.detach())) / 2
+            dif13_ins = (self.mse_loss(MV1_feat, MV3_feat.detach()) + self.mse_loss(MV3_feat, MV1_feat.detach())) / 2
+            dif23_ins = (self.mse_loss(MV2_feat, MV3_feat.detach()) + self.mse_loss(MV3_feat, MV2_feat.detach())) / 2
 
-            # 一致性损失
-            # self.consistency_loss(sigmoid_out)
-
-            # 汇总
             re_loss = re1_loss + re2_loss + re3_loss
             mv_loss = mv1_loss + mv2_loss + mv3_loss
             dif_loss = dif12_ins + dif13_ins + dif23_ins
-            return self.classifier(features), sigmoid_out, re_loss, mv_loss, dif_loss
+            return self.classifier(features), domain_out, re_loss, mv_loss, dif_loss
 
 
 class SWL(nn.Module):
@@ -324,6 +326,7 @@ class MVDClassifier(nn.Module):
         x = self.dc_drop2(self.dc_relu2(self.dc_ip2(x)))
         x = self.sigmoid(self.dc_classifier(x))
         return x
+
 
 class MVDC_En(nn.Module):
     def __init__(self):
