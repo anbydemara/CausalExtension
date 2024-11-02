@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 """
 @Project ：CausalExtension 
-@File    ：train_muldomain.py
+@File    ：train_multi-domain.py
 @IDE     ：PyCharm
 @Author  ：一只快乐鸭
 @Date    ：2024/10/25 15:37

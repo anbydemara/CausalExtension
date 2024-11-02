@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 """
 @Project ：CausalExtension 
-@File    ：train_muldomain.py
+@File    ：train_multi-domain.py
 @IDE     ：PyCharm 
 @Author  ：一只快乐鸭
 @Date    ：2024/10/25 15:37 
@@ -22,10 +22,9 @@ from tqdm import tqdm
 
 from config.config import get_args
 from data.datasets import get_dataset, HyperX
-from models.extractor import CausalNet, CategoryConsistencyLoss
+from models.extractor import CausalNet
 from models.generator import Generator
 from utils.data_util import sample_gt, seed_worker, metrics
-from utils.train_util import save_model, get_metrics, factorization_loss, adjust_learning_rate
 
 
 def set_seed(seed):
@@ -99,8 +98,6 @@ def train(epoch):
 #         domain_loss = domain_loss_SD.mean() + domain_loss_ED.mean()
 #         err = domain_loss + cls_loss + MV_loss
         err = cls_loss + MV_loss * epoch * 0.12
-        # loss_fac = factorization_loss(feat_SD, feat_ED)
-        # loss_cc = cc_criterion(band_SD, label) + cc_criterion(band_ED, label)
         # loss = 0.8 * cls_loss + 0.2 * cls_loss_TD + loss_cc + loss_fac    # loss_cc刚开始会非常大
         # 指标前期不变原因未查明
 
@@ -233,8 +230,6 @@ if __name__ == '__main__':
     G_opt = Adam(generator.parameters(), lr=args.lr)
 
     # loss
-    cc_criterion = CategoryConsistencyLoss(num_classes=num_classes, embedding_size=N_BANDS, device=args.gpu)
-    C_opt = torch.optim.Adam(cc_criterion.parameters(), lr=args.lr)
 
     cls_criterion = nn.CrossEntropyLoss()
     # loss_domain = torch.nn.NLLLoss()
@@ -244,7 +239,6 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         model.to(args.gpu)
         generator.to(args.gpu)
-        cc_criterion.to(args.gpu)
         loss_domain.to(args.gpu)
 
     best_acc = 0
