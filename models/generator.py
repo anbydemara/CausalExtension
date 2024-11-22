@@ -15,11 +15,13 @@ from models.morph_layer import *
 
 
 class SpaRandomization(nn.Module):
-    def __init__(self, num_features, eps=1e-5, device=0):
+    # def __init__(self, num_features, eps=1e-5, device=0):
+    def __init__(self, num_features, eps=1e-5):
         super().__init__()
         self.eps = eps
         self.norm = nn.InstanceNorm2d(num_features, affine=False)
-        self.alpha = nn.Parameter(torch.tensor(0.5), requires_grad=True).to(device)
+        # self.alpha = nn.Parameter(torch.tensor(0.5), requires_grad=True).to(device)
+        self.alpha = nn.Parameter(torch.tensor(0.5), requires_grad=True)
 
     def forward(self, x, ):
         N, C, H, W = x.size()
@@ -32,7 +34,8 @@ class SpaRandomization(nn.Module):
             x = (x - mean) / (var + self.eps).sqrt()
 
             idx_swap = torch.randperm(N)
-            alpha = torch.rand(N, 1, 1)
+            # alpha = torch.rand(N, 1, 1)
+            print(self.alpha.device)
             mean = self.alpha * mean + (1 - self.alpha) * mean[idx_swap]
             var = self.alpha * var + (1 - self.alpha) * var[idx_swap]
 
@@ -120,7 +123,8 @@ class Reshape(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, n=16, kernelsize=3, imdim=3, imsize=[13, 13], zdim=10, device=0):
+    # def __init__(self, n=16, kernelsize=3, imdim=3, imsize=[13, 13], zdim=10, device=0):
+    def __init__(self, n=16, kernelsize=3, imdim=3, imsize=[13, 13], zdim=10):
         ''' w_ln 局部噪声权重
         '''
         super().__init__()
@@ -128,7 +132,7 @@ class Generator(nn.Module):
         self.zdim = zdim
         self.imdim = imdim
         self.imsize = imsize
-        self.device = device
+        # self.device = device
         num_morph = 4
         self.Morphology = MorphNet(imdim)
         self.adain2_morph = AdaIN2d(zdim, num_morph)
@@ -140,11 +144,13 @@ class Generator(nn.Module):
         self.conv1 = nn.Conv2d(n + n + num_morph, n, kernelsize, 1, stride)
         self.conv2 = nn.Conv2d(n, imdim, kernelsize, 1, stride)
         self.speRandom = SpeRandomization(n)
-        self.spaRandom = SpaRandomization(3, device=device)
+        # self.spaRandom = SpaRandomization(3, device=device)
+        self.spaRandom = SpaRandomization(3)
 
     def forward(self, x):
         x_morph = self.Morphology(x)
-        z = torch.randn(len(x), self.zdim).to(self.device)
+        # z = torch.randn(len(x), self.zdim).to(self.device)
+        z = torch.randn(len(x), self.zdim).to(x.device)
         x_morph = self.adain2_morph(x_morph, z)
 
         x_spa = F.relu(self.conv_spa1(x))
