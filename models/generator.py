@@ -35,7 +35,6 @@ class SpaRandomization(nn.Module):
 
             idx_swap = torch.randperm(N)
             # alpha = torch.rand(N, 1, 1)
-            print(self.alpha.device)
             mean = self.alpha * mean + (1 - self.alpha) * mean[idx_swap]
             var = self.alpha * var + (1 - self.alpha) * var[idx_swap]
 

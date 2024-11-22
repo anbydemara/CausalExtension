@@ -62,22 +62,22 @@ def train(epoch):
         # 生成扩展域和中间域 no_grad
         with torch.no_grad():
             x_ED = generator(data)
-        rand = torch.nn.init.uniform_(torch.empty(len(data), 1, 1, 1)).to(args.gpu)
-        x_ID = rand * data + (1 - rand) * x_ED
+        # rand = torch.nn.init.uniform_(torch.empty(len(data), 1, 1, 1)).to(args.gpu)
+        # x_ID = rand * data + (1 - rand) * x_ED
 
         x_TD = generator(data)  # .detach()
         label_TD = label
 
         out_SD = model(data)
         out_ED = model(x_ED)
-        pred_SD = torch.max(out_SD, dim=1)[1]
-        pred_ED = torch.max(out_ED, dim=1)[1]
-        cls_loss = cls_criterion(pred_SD, label) + cls_criterion(pred_ED, label)
+        # pred_SD = torch.max(out_SD, dim=1)[1]
+        # pred_ED = torch.max(out_ED, dim=1)[1]
+        cls_loss = cls_criterion(out_SD, label.long()) + cls_criterion(out_ED, label.long())
 
         out_TD = model(x_TD)
-        pred_TD = torch.max(out_TD, dim=1)[1]
+        # pred_TD = torch.max(out_TD, dim=1)[1]
 
-        cls_loss_TD = cls_criterion(pred_TD, label_TD)  # TD分类损失
+        cls_loss_TD = cls_criterion(out_TD, label_TD.long())  # TD分类损失
 
         M_opt.zero_grad()
         # C_opt.zero_grad()
@@ -111,7 +111,7 @@ def validation(best_acc):
         y1 = y1 - 1
         with torch.no_grad():
             x1 = x1.to(args.gpu)
-            p1 = model(x1, None)
+            p1 = model(x1)
             p1 = p1.argmax(dim=1)
             ps.append(p1.detach().cpu().numpy())
             ys.append(y1.numpy())
@@ -205,16 +205,18 @@ if __name__ == '__main__':
     M_opt = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     # 生成器&优化器
-    generator = Generator(n=args.d_se, imdim=N_BANDS, imsize=imsize, zdim=10, device=args.gpu)
+    generator = Generator(n=args.d_se, imdim=N_BANDS, imsize=imsize, zdim=10)
     G_opt = Adam(generator.parameters(), lr=args.lr)
 
     # loss
     cls_criterion = nn.CrossEntropyLoss()
 
+    device_ids = [4, 5, 6, 7]
     if torch.cuda.is_available():
+        model = nn.DataParallel(model, device_ids=device_ids)
+        generator = nn.DataParallel(generator, device_ids=device_ids)
         model.to(args.gpu)
         generator.to(args.gpu)
-
 
     best_acc = 0
     for epoch in range(1, args.epoch + 1):
