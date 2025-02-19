@@ -114,8 +114,12 @@ class T2T_ViT_Feature(nn.Module):
         self.blocks = nn.ModuleList(self.blocks_list)
         self.norm = norm_layer(embed_dim)
 
+        self.classifier = classifier(num_classes=num_classes)
+
         trunc_normal_(self.cls_token, std=.02)
         self.apply(self._init_weights)
+
+
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -152,13 +156,13 @@ class T2T_ViT_Feature(nn.Module):
         x_causal = self.norm(x_causal)
         x_spurious = self.norm(x_spurious)
         x_mix = self.norm(x_mix)
-        #print(x_causal[:, 0].size())
+        # x_causal[:, 1:] -> feature token
         return x_causal[:, 0], x_spurious[:, 0], x_mix[:, 0]
 
 
     def forward(self, x):
         x_causal, x_spurious, x_mix = self.forward_features(x)
-        return [x_causal, x_spurious, x_mix]
+        return self.classifier(x_mix)
 
 
 class T2tvit_Classifier(nn.Module):
